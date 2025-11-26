@@ -1,133 +1,277 @@
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Edit, Trash2, Mail, GraduationCap } from "lucide-react";
-import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Plus, Search, Mail, Edit, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import apiClient from "@/integrations/supabase/client";
 
-const studentData = [
-  { id: 1, name: "Alice Thompson", email: "alice.t@student.edu", rollNo: "CS2021001", class: "CS-A", year: "3rd Year", gpa: "3.8" },
-  { id: 2, name: "Bob Martinez", email: "bob.m@student.edu", rollNo: "CS2021002", class: "CS-A", year: "3rd Year", gpa: "3.6" },
-  { id: 3, name: "Charlie Brown", email: "charlie.b@student.edu", rollNo: "CS2021003", class: "CS-B", year: "3rd Year", gpa: "3.9" },
-  { id: 4, name: "Diana Prince", email: "diana.p@student.edu", rollNo: "CS2022001", class: "CS-A", year: "2nd Year", gpa: "4.0" },
-  { id: 5, name: "Ethan Hunt", email: "ethan.h@student.edu", rollNo: "CS2022002", class: "CS-B", year: "2nd Year", gpa: "3.7" },
-  { id: 6, name: "Fiona Clark", email: "fiona.c@student.edu", rollNo: "CS2022003", class: "CS-A", year: "2nd Year", gpa: "3.5" },
-];
+interface Student {
+  _id: string;
+  fullName: string;
+  email: string;
+  rollNo: string;
+  class: string;
+  year: string;
+  gpa: number;
+}
 
 const StudentManagement = () => {
-  const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [students, setStudents] = useState(studentData);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [newStudent, setNewStudent] = useState({
-    name: "", email: "", rollNo: "", class: "", year: ""
-  });
-  
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.rollNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
-  const handleAddStudent = () => {
-    if (!newStudent.name || !newStudent.email || !newStudent.rollNo || !newStudent.class || !newStudent.year) {
-      toast({ title: "Error", description: "All fields are required", variant: "destructive" });
+  // Form state
+  const [formData, setFormData] = useState({
+    fullName: "",
+    email: "",
+    rollNo: "",
+    class: "",
+    year: "",
+    gpa: "",
+  });
+
+  // Fetch students list
+  const fetchStudents = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get("/students");
+      console.log("✅ Students fetched:", response.data);
+      setStudents(response.data);
+    } catch (error: any) {
+      console.error("❌ Error fetching students:", error);
+      toast.error(error.response?.data?.error || "Failed to fetch students");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load students on mount
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  // Handle form input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  // Handle add student
+  const handleAddStudent = async () => {
+    if (!formData.fullName || !formData.email || !formData.rollNo) {
+      toast.error("Please fill in all required fields");
       return;
     }
-    const student = {
-      id: students.length + 1,
-      name: newStudent.name,
-      email: newStudent.email,
-      rollNo: newStudent.rollNo,
-      class: newStudent.class,
-      year: newStudent.year,
-      gpa: "0.0"
-    };
-    setStudents([...students, student]);
-    setNewStudent({ name: "", email: "", rollNo: "", class: "", year: "" });
-    setDialogOpen(false);
-    toast({ title: "Success!", description: "Student added successfully" });
+
+    try {
+      console.log("📤 Adding student:", formData);
+      const response = await apiClient.post("/students", {
+        ...formData,
+        gpa: formData.gpa ? parseFloat(formData.gpa) : 0,
+      });
+      console.log("✅ Student added:", response.data);
+      
+      toast.success("Student added successfully!");
+      setIsAddDialogOpen(false);
+      
+      // Reset form
+      setFormData({
+        fullName: "",
+        email: "",
+        rollNo: "",
+        class: "",
+        year: "",
+        gpa: "",
+      });
+      
+      // Refresh students list
+      fetchStudents();
+    } catch (error: any) {
+      console.error("❌ Error adding student:", error);
+      toast.error(error.response?.data?.error || "Failed to add student");
+    }
   };
 
-  const handleDeleteStudent = (id: number) => {
-    setStudents(students.filter(s => s.id !== id));
-    toast({ title: "Deleted", description: "Student removed successfully" });
+  // Handle edit student
+  const handleEditClick = (student: Student) => {
+    setEditingStudent(student);
+    setFormData({
+      fullName: student.fullName,
+      email: student.email,
+      rollNo: student.rollNo || "",
+      class: student.class || "",
+      year: student.year || "",
+      gpa: student.gpa ? student.gpa.toString() : "",
+    });
+    setIsEditDialogOpen(true);
   };
+
+  // Handle update student
+  const handleUpdateStudent = async () => {
+    if (!editingStudent) return;
+
+    try {
+      console.log("📤 Updating student:", editingStudent._id, formData);
+      const response = await apiClient.put(`/students/${editingStudent._id}`, {
+        ...formData,
+        gpa: formData.gpa ? parseFloat(formData.gpa) : 0,
+      });
+      console.log("✅ Student updated:", response.data);
+      
+      toast.success("Student updated successfully!");
+      setIsEditDialogOpen(false);
+      setEditingStudent(null);
+      
+      // Reset form
+      setFormData({
+        fullName: "",
+        email: "",
+        rollNo: "",
+        class: "",
+        year: "",
+        gpa: "",
+      });
+      
+      // Refresh students list
+      fetchStudents();
+    } catch (error: any) {
+      console.error("❌ Error updating student:", error);
+      toast.error(error.response?.data?.error || "Failed to update student");
+    }
+  };
+
+  // Handle delete student
+  const handleDeleteStudent = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this student?")) return;
+
+    try {
+      console.log("🗑️ Deleting student:", id);
+      await apiClient.delete(`/students/${id}`);
+      console.log("✅ Student deleted");
+      
+      toast.success("Student deleted successfully!");
+      fetchStudents();
+    } catch (error: any) {
+      console.error("❌ Error deleting student:", error);
+      toast.error(error.response?.data?.error || "Failed to delete student");
+    }
+  };
+
+  // Filter students by search query
+  const filteredStudents = students.filter((s) =>
+    s.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.rollNo?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary via-cyan-glow to-accent bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary via-cyan-glow to-accent bg-clip-text text-transparent">
               Student Management
             </h1>
-            <p className="text-muted-foreground">Manage students and their enrollments</p>
+            <p className="text-muted-foreground mt-2">Manage students and their enrollments</p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+
+          {/* Add Student Button */}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-primary to-cyan-glow hover:shadow-glow transition-all">
+              <Button className="bg-gradient-to-r from-primary to-cyan-glow hover:shadow-neon">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Student
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-card border-border/50">
+            <DialogContent className="bg-card border-border">
               <DialogHeader>
-                <DialogTitle>Add New Student</DialogTitle>
+                <DialogTitle className="text-2xl font-bold">Add New Student</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-4 mt-4">
                 <div>
-                  <Label>Full Name</Label>
-                  <Input 
-                    placeholder="John Doe" 
-                    className="bg-secondary/30 border-border/50"
-                    value={newStudent.name}
-                    onChange={(e) => setNewStudent({...newStudent, name: e.target.value})}
+                  <label className="text-sm font-medium mb-2 block">Full Name</label>
+                  <Input
+                    name="fullName"
+                    value={formData.fullName}
+                    onChange={handleInputChange}
+                    placeholder="John Doe"
+                    className="bg-secondary/50 border-border"
                   />
                 </div>
                 <div>
-                  <Label>Email</Label>
-                  <Input 
-                    type="email" 
-                    placeholder="john.doe@student.edu" 
-                    className="bg-secondary/30 border-border/50"
-                    value={newStudent.email}
-                    onChange={(e) => setNewStudent({...newStudent, email: e.target.value})}
+                  <label className="text-sm font-medium mb-2 block">Email</label>
+                  <Input
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    placeholder="john.doe@student.edu"
+                    className="bg-secondary/50 border-border"
                   />
                 </div>
                 <div>
-                  <Label>Roll Number</Label>
-                  <Input 
-                    placeholder="CS2024001" 
-                    className="bg-secondary/30 border-border/50"
-                    value={newStudent.rollNo}
-                    onChange={(e) => setNewStudent({...newStudent, rollNo: e.target.value})}
+                  <label className="text-sm font-medium mb-2 block">Roll Number</label>
+                  <Input
+                    name="rollNo"
+                    value={formData.rollNo}
+                    onChange={handleInputChange}
+                    placeholder="CS2024001"
+                    className="bg-secondary/50 border-border"
                   />
                 </div>
                 <div>
-                  <Label>Class</Label>
-                  <Input 
-                    placeholder="CS-A" 
-                    className="bg-secondary/30 border-border/50"
-                    value={newStudent.class}
-                    onChange={(e) => setNewStudent({...newStudent, class: e.target.value})}
+                  <label className="text-sm font-medium mb-2 block">Class</label>
+                  <Input
+                    name="class"
+                    value={formData.class}
+                    onChange={handleInputChange}
+                    placeholder="CS-A"
+                    className="bg-secondary/50 border-border"
                   />
                 </div>
                 <div>
-                  <Label>Year</Label>
-                  <Input 
-                    placeholder="1st Year" 
-                    className="bg-secondary/30 border-border/50"
-                    value={newStudent.year}
-                    onChange={(e) => setNewStudent({...newStudent, year: e.target.value})}
+                  <label className="text-sm font-medium mb-2 block">Year</label>
+                  <Input
+                    name="year"
+                    value={formData.year}
+                    onChange={handleInputChange}
+                    placeholder="1st Year"
+                    className="bg-secondary/50 border-border"
                   />
                 </div>
-                <Button onClick={handleAddStudent} className="w-full bg-gradient-to-r from-primary to-cyan-glow">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">GPA (Optional)</label>
+                  <Input
+                    name="gpa"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="4"
+                    value={formData.gpa}
+                    onChange={handleInputChange}
+                    placeholder="3.8"
+                    className="bg-secondary/50 border-border"
+                  />
+                </div>
+                <Button
+                  onClick={handleAddStudent}
+                  className="w-full bg-gradient-to-r from-primary to-cyan-glow"
+                >
                   Add Student
                 </Button>
               </div>
@@ -135,122 +279,184 @@ const StudentManagement = () => {
           </Dialog>
         </div>
 
-        <Card className="p-6 border-border/50 bg-card/50 backdrop-blur-sm">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search students by name, email, or roll number..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-secondary/30 border-border/50"
-              />
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-border/50 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-secondary/30 hover:bg-secondary/40">
-                  <TableHead>Roll No</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Class</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead>GPA</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.map((student) => (
-                  <TableRow key={student.id} className="hover:bg-secondary/20">
-                    <TableCell className="font-mono text-primary">{student.rollNo}</TableCell>
-                    <TableCell className="font-medium text-foreground">{student.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Mail className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">{student.email}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                        {student.class}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-foreground">{student.year}</TableCell>
-                    <TableCell>
-                      <span className={`font-bold ${parseFloat(student.gpa) >= 3.7 ? 'text-green-500' : 'text-accent'}`}>
-                        {student.gpa}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => handleDeleteStudent(student.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        {/* Search Bar */}
+        <Card className="p-4 border-border/50 bg-card/50">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-5 h-5" />
+            <Input
+              placeholder="Search students by name, email, or roll number..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-secondary/50 border-border"
+            />
           </div>
         </Card>
 
-        <div className="grid md:grid-cols-4 gap-4">
-          <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-cyan-glow flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{students.length}</p>
-                <p className="text-sm text-muted-foreground">Total Students</p>
-              </div>
+        {/* Students Table */}
+        {loading ? (
+          <Card className="p-12 text-center border-border/50 bg-card/50">
+            <p className="text-muted-foreground">Loading students...</p>
+          </Card>
+        ) : filteredStudents.length === 0 ? (
+          <Card className="p-12 text-center border-border/50 bg-card/50">
+            <p className="text-muted-foreground">
+              {searchQuery ? "No students found matching your search" : "No students yet. Add one to get started!"}
+            </p>
+          </Card>
+        ) : (
+          <Card className="border-border/50 bg-card/50 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-secondary/30 border-b border-border/50">
+                  <tr>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Roll No</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Name</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Email</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Class</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Year</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">GPA</th>
+                    <th className="text-left p-4 text-sm font-semibold text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStudents.map((student) => (
+                    <tr
+                      key={student._id}
+                      className="border-b border-border/30 hover:bg-secondary/20 transition-colors"
+                    >
+                      <td className="p-4">
+                        <span className="text-primary font-medium">{student.rollNo || 'N/A'}</span>
+                      </td>
+                      <td className="p-4">
+                        <span className="font-medium text-foreground">{student.fullName}</span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="w-4 h-4" />
+                          <span className="text-sm">{student.email}</span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                          {student.class || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="text-foreground">{student.year || 'N/A'}</span>
+                      </td>
+                      <td className="p-4">
+                        <span className={`font-bold ${
+                          student.gpa >= 3.5 ? 'text-green-500' :
+                          student.gpa >= 3.0 ? 'text-cyan-500' :
+                          student.gpa >= 2.5 ? 'text-yellow-500' :
+                          'text-red-500'
+                        }`}>
+                          {student.gpa ? student.gpa.toFixed(1) : '0.0'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleEditClick(student)}
+                            className="border-border hover:bg-primary/10"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => handleDeleteStudent(student._id)}
+                            className="border-border hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
-          <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent to-primary flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
+        )}
+
+        {/* Edit Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Edit Student</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Full Name</label>
+                <Input
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">3</p>
-                <p className="text-sm text-muted-foreground">3rd Year</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-glow to-accent flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">3</p>
-                <p className="text-sm text-muted-foreground">2nd Year</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-4 border-border/50 bg-card/50 backdrop-blur-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                <GraduationCap className="w-5 h-5 text-white" />
+                <label className="text-sm font-medium mb-2 block">Email</label>
+                <Input
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
               </div>
               <div>
-                <p className="text-2xl font-bold text-foreground">3.75</p>
-                <p className="text-sm text-muted-foreground">Avg GPA</p>
+                <label className="text-sm font-medium mb-2 block">Roll Number</label>
+                <Input
+                  name="rollNo"
+                  value={formData.rollNo}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
               </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Class</label>
+                <Input
+                  name="class"
+                  value={formData.class}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Year</label>
+                <Input
+                  name="year"
+                  value={formData.year}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">GPA</label>
+                <Input
+                  name="gpa"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="4"
+                  value={formData.gpa}
+                  onChange={handleInputChange}
+                  className="bg-secondary/50 border-border"
+                />
+              </div>
+              <Button
+                onClick={handleUpdateStudent}
+                className="w-full bg-gradient-to-r from-primary to-cyan-glow"
+              >
+                Update Student
+              </Button>
             </div>
-          </Card>
-        </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

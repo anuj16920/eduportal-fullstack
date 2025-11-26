@@ -19,7 +19,8 @@ connectDB();
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/faculty', require('./routes/faculty')); // ✅ ADD FACULTY ROUTES
+app.use('/api/faculty', require('./routes/faculty'));
+app.use('/api/students', require('./routes/students')); // ✅ STUDENTS ROUTE ADDED
 
 // Test Route
 app.get('/', (req, res) => {
@@ -29,7 +30,8 @@ app.get('/', (req, res) => {
     status: 'Active',
     routes: {
       auth: '/api/auth/register, /api/auth/login',
-      faculty: '/api/faculty (GET, POST, PUT, DELETE)'
+      faculty: '/api/faculty (GET, POST, PUT, DELETE)',
+      students: '/api/students (GET, POST, PUT, DELETE)' // ✅ ADDED
     }
   });
 });
@@ -58,4 +60,5 @@ app.listen(PORT, () => {
   console.log(`📍 URL: http://localhost:${PORT}`);
   console.log(`🔐 Auth routes: http://localhost:${PORT}/api/auth`);
   console.log(`👨‍🏫 Faculty routes: http://localhost:${PORT}/api/faculty`);
+  console.log(`🎓 Student routes: http://localhost:${PORT}/api/students`); // ✅ ADDED
 });
